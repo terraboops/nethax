@@ -89,24 +89,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 
-	// Iterate over our choices
-	if m.choice != "" {
-		return quitTextStyle.Render(fmt.Sprintf("%s? Sounds good to me.", m.choice))
-
 	}
-	if m.quit {
-		return quitTextStyle.Render("Not hungry? That’s cool.")
 
-	}
-	return "\n" + m.list.View()
 }
 
 func initialModel() model {
-	k := pkg.GetKubernetes()
-	namespaces, err := k.Client.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
+	namespaces := pkg.GetNamespaces()
 
 	var namespaceNames []list.Item
-	for _, name := range ns {
+	for _, name := range namespaces {
 		namespaceNames = append(namespaceNames, item(name))
 	}
 
