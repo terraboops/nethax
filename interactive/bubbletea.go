@@ -1,7 +1,6 @@
 package interactive
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -9,8 +8,6 @@ import (
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/grafana/nethack/pkg"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const listHeight = 14
@@ -25,14 +22,29 @@ var (
 )
 
 type model struct {
-	list   list.Model
-	choice string
-	quit   bool
+	list list.Model
+	quit bool
+
+	mode  string // pod2pod, pod2remote, etc
+	state string // pickingMode, pickingPodTo, pickingNamespaceTo, typingRemoteURI, pickingPodFrom, pickingNamespaceFrom, typingPort
+
+	namespaceFrom string
+	podFrom       string
+
+	remoteURI string
+
+	namespaceTo string
+	podTo       string
+	portTo      string
 }
 
-type item string
+type item struct {
+	title string
+}
 
-func (i item) FilterValue() string { return "" }
+func (i item) FilterValue() string {
+	return i.title
+}
 
 type itemDelegate struct{}
 
@@ -45,13 +57,15 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		return
 	}
 
-	str := fmt.Sprintf("%d. %s", index+1, i)
+	str := fmt.Sprintf("%d. %s", index+1, i.title)
 
 	fn := itemStyle.Render
 	if index == m.Index() {
 		fn = func(s ...string) string {
-			return selectedItemStyle.Render("> " + strings.Join(s, " "))
+			return selectedItemStyle.Render("🫧 " + strings.Join(s, " "))
 		}
+	} else {
+		str = " " + str
 	}
 
 	fmt.Fprint(w, fn(str))
@@ -70,17 +84,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
-		switch keypress := msg.String(); keypress {
-		case "q", "ctrl+c":
-			m.quit = true
-			return m, tea.Quit
+		switch m.state {
+		case "pickingMode":
+			switch keypress := msg.String(); keypress {
+			case "q", "ctrl+c":
+				m.quit = true
+				return m, tea.Quit
 
-		case "enter":
-			i, ok := m.list.SelectedItem().(item)
-			if ok {
-				m.choice = string(i)
+			case "enter":
+				i, ok := m.list.SelectedItem().(item)
+				if ok {
+					m.mode = string(i.title)
+				}
+				return m, tea.Quit
 			}
-			return m, tea.Quit
+		case "pod2pod":
+			switch keypress := msg.String(); keypress {
+			case "q", "ctrl+c":
+				m.quit = true
+				return m, tea.Quit
+
+			case "enter":
+				i, ok := m.list.SelectedItem().(item)
+				if ok {
+					m.mode = string(i.title)
+				}
+				return m, tea.Quit
+
+			}
 		}
 	}
 
@@ -92,42 +123,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m model) View() string {
 
 	// Iterate over our choices
-	if m.choice != "" {
-		return quitTextStyle.Render(fmt.Sprintf("%s? Sounds good to me.", m.choice))
-
+	if m.mode != "mode" {
+		return quitTextStyle.Render(fmt.Sprintf("%s? Sounds good to me.", m.mode))
 	}
 	if m.quit {
 		return quitTextStyle.Render("Not hungry? That’s cool.")
-
 	}
 	return "\n" + m.list.View()
 }
 
-func initialModel() model {
-	k := pkg.GetKubernetes()
-	ns, _ := k.Client.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
-
-	var namespaceNames []list.Item
-	for _, name := range ns.Items {
-		namespaceNames = append(namespaceNames, item(name.Name))
+func startingModel() model {
+	modes := []list.Item{
+		item{title: "pod2pod"},
+		item{title: "pod2remote"},
 	}
 
 	const defaultWidth = 20
 
-	l := list.New(namespaceNames, itemDelegate{}, defaultWidth, listHeight)
-	l.Title = "Pick a namespace:"
+	l := list.New(modes, itemDelegate{}, defaultWidth, listHeight)
+	l.Title = "Pick a mode:"
 	l.SetShowStatusBar(false)
-	l.SetFilteringEnabled(false)
+	l.SetFilteringEnabled(true)
 	l.Styles.Title = titleStyle
 	l.Styles.PaginationStyle = paginationStyle
 	l.Styles.HelpStyle = helpStyle
 
-	return model{list: l}
-
+	return model{list: l, state: "pickingMode"}
 }
 
 func Start() *tea.Program {
-	p := tea.NewProgram(initialModel())
+	p := tea.NewProgram(startingModel())
 	return p
 }
 

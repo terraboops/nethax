@@ -39,9 +39,6 @@ func Pod2PodExec(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	podFrom, _ := getPodForWorkload(cmd.Context(), podRegexFrom, namespaceFrom)
-	command := []string{"nc"}
-
 	port, err := cmd.Flags().GetString("port")
 	if err != nil || port == "" {
 		fmt.Println("--port must be specified", err)
@@ -60,9 +57,11 @@ func Pod2PodExec(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	podFrom, _ := getPodForWorkload(cmd.Context(), podRegexFrom, namespaceFrom)
 	podTo, _ := getPodForWorkload(cmd.Context(), podRegexTo, namespaceTo)
-
+	command := []string{"nc"}
 	arguments := []string{"-w", "3", "-z", podTo.Status.PodIP, port}
+
 	netshootifiedPod, ephemeralContainerName, err := pkg.LaunchEphemeralContainer(podFrom, command, arguments)
 	if err != nil {
 		fmt.Println("Error launching ephemeral container.", err)
